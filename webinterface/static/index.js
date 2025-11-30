@@ -17,7 +17,6 @@ let uploadProgress = [];
 
 let advancedMode = false;
 
-let gradients;
 let config_settings;
 let live_settings;
 let current_page = "main";
@@ -58,7 +57,7 @@ function loadAjax(subpage) {
                     mainElement.classList.add("show");
                 }, 100);
                 remove_page_indicators();
-                document.getElementById(subpage).classList.add("dark:bg-gray-700", "bg-gray-100");
+                document.getElementById(subpage).classList.add("glass-light");
                 switch (subpage) {
                     case "home":
                         initialize_homepage();
@@ -122,6 +121,123 @@ function start_led_animation(name, speed) {
     const xhttp = new XMLHttpRequest();
     xhttp.open("GET", "/api/start_animation?name=" + name + "&speed=" + speed, true);
     xhttp.send();
+}
+
+function handleDisplayTypeChange(value, selectElement) {
+    // Get the previous value (the one that was selected before this change)
+    const previousValue = value === '1in44' ? '1in3' : '1in44';
+    const storedPrevious = selectElement.getAttribute('data-current-value');
+    const actualPrevious = storedPrevious || previousValue;
+    
+    // Show confirmation dialog with translation
+    const displayName = value === '1in44' ? '1.44 inch' : '1.3 inch';
+    const confirmMessage = translate('lcd_type_change_confirm').replace('{0}', displayName);
+    const confirmed = confirm(confirmMessage);
+    
+    if (confirmed) {
+        // Store the value we're changing to as current for next time
+        selectElement.setAttribute('data-current-value', value);
+        
+        // Show loading state
+        selectElement.disabled = true;
+        selectElement.style.opacity = '0.6';
+        
+        // Call change_setting API
+        const xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function () {
+            if (this.readyState === 4 && this.status === 200) {
+                const response = JSON.parse(this.responseText);
+                if (response.success === true) {
+                    // Show success message with translation
+                    alert(translate('lcd_type_change_success'));
+                    // Reload page after delay to allow visualizer to restart (30 seconds)
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 30000);
+                } else {
+                    // Revert on error
+                    selectElement.value = actualPrevious;
+                    selectElement.setAttribute('data-current-value', actualPrevious);
+                    selectElement.disabled = false;
+                    selectElement.style.opacity = '1';
+                    const errorMsg = translate('lcd_type_change_error').replace('{0}', response.error || 'Unknown error');
+                    alert(errorMsg);
+                }
+            } else if (this.readyState === 4) {
+                // Revert on error
+                selectElement.value = actualPrevious;
+                selectElement.setAttribute('data-current-value', actualPrevious);
+                selectElement.disabled = false;
+                selectElement.style.opacity = '1';
+                const errorMsg = translate('lcd_type_change_error').replace('{0}', 'Please try again.');
+                alert(errorMsg);
+            }
+        };
+        xhttp.open("GET", "/api/change_setting?setting_name=display_type&value=" + value, true);
+        xhttp.send();
+    } else {
+        // Revert to previous value if cancelled
+        selectElement.value = actualPrevious;
+        selectElement.setAttribute('data-current-value', actualPrevious);
+    }
+}
+
+function handleLedPinChange(value, selectElement) {
+    // Get the previous value (the one that was selected before this change)
+    const validPins = ['12', '13', '18', '19'];
+    const storedPrevious = selectElement.getAttribute('data-current-value');
+    const actualPrevious = storedPrevious || '18';
+    
+    // Show confirmation dialog with translation
+    const confirmMessage = translate('led_pin_change_confirm').replace('{0}', value);
+    const confirmed = confirm(confirmMessage);
+    
+    if (confirmed) {
+        // Store the value we're changing to as current for next time
+        selectElement.setAttribute('data-current-value', value);
+        
+        // Show loading state
+        selectElement.disabled = true;
+        selectElement.style.opacity = '0.6';
+        
+        // Call change_setting API
+        const xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function () {
+            if (this.readyState === 4 && this.status === 200) {
+                const response = JSON.parse(this.responseText);
+                if (response.success === true) {
+                    // Show success message with translation
+                    alert(translate('led_pin_change_success'));
+                    // Reload page after delay to allow visualizer to restart (30 seconds)
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 30000);
+                } else {
+                    // Revert on error
+                    selectElement.value = actualPrevious;
+                    selectElement.setAttribute('data-current-value', actualPrevious);
+                    selectElement.disabled = false;
+                    selectElement.style.opacity = '1';
+                    const errorMsg = translate('led_pin_change_error').replace('{0}', response.error || 'Unknown error');
+                    alert(errorMsg);
+                }
+            } else if (this.readyState === 4) {
+                // Revert on error
+                selectElement.value = actualPrevious;
+                selectElement.setAttribute('data-current-value', actualPrevious);
+                selectElement.disabled = false;
+                selectElement.style.opacity = '1';
+                const errorMsg = translate('led_pin_change_error').replace('{0}', 'Please try again.');
+                alert(errorMsg);
+            }
+        };
+        xhttp.open("GET", "/api/change_setting?setting_name=led_pin&value=" + value, true);
+        xhttp.send();
+    } else {
+        // Revert to previous value if cancelled
+        selectElement.value = actualPrevious;
+        selectElement.setAttribute('data-current-value', actualPrevious);
+    }
 }
 
 function change_setting(setting_name, value, second_value = false, disable_sequence = false) {
@@ -247,6 +363,16 @@ function setAdvancedMode(mode) {
         element.style.display = newDisplayStyle;
     });
 
+    // Update secondary stats grid columns based on advanced mode
+    const secondaryStatsGrid = document.getElementById('secondary_stats_grid');
+    if (secondaryStatsGrid) {
+        if (advancedMode) {
+            secondaryStatsGrid.className = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6';
+        } else {
+            secondaryStatsGrid.className = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-6';
+        }
+    }
+
     // Save the user's choice in a cookie
     const modeValue = advancedMode ? 'advanced' : 'normal';
     setCookie('mode', modeValue, 365)
@@ -261,7 +387,12 @@ function checkSavedMode() {
         if (mode === 'advanced') {
             modeSwitch.checked = true;
             setAdvancedMode(true);
+        } else {
+            setAdvancedMode(false);
         }
+    } else {
+        // Default to normal mode if no cookie exists
+        setAdvancedMode(false);
     }
 }
 
@@ -378,7 +509,7 @@ function render_port_connection_interface() {
 
 function create_port_element(port, type) {
     const div = document.createElement('div');
-    div.className = 'port-item relative bg-gray-200 dark:bg-gray-700 p-3 rounded cursor-pointer hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors';
+    div.className = 'port-item relative glass-light p-3 rounded-glass cursor-pointer hover:glass transition-smooth-fast';
     div.dataset.portId = port.id;
     div.dataset.portType = type;
     div.title = port.full_name;

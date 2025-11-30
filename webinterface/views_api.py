@@ -142,7 +142,10 @@ def get_homepage_data():
         'card_space_percent': card_space.percent,
         'cover_state': 'Opened' if cover_opened else 'Closed',
         'led_fps': round(app_state.ledstrip.current_fps, 2),
+        'system_state': app_state.state_manager.current_state.value.upper() if app_state.state_manager else 'UNKNOWN',
         'screen_on': app_state.menu.screen_on,
+        'display_type': app_state.menu.args.display if app_state.menu and app_state.menu.args and app_state.menu.args.display else app_state.usersettings.get_setting_value("display_type") or '1in44',
+        'led_pin': app_state.usersettings.get_setting_value("led_pin") or '18',
     }
     return jsonify(homepage_data)
 
@@ -960,6 +963,42 @@ def change_setting():
         else:
             app_state.menu.enable_screen()
 
+    if setting_name == "display_type":
+        # Validate the value
+        if value in ['1in44', '1in3']:
+            app_state.usersettings.change_setting_value("display_type", value)
+            # Restart visualizer to apply the LCD type change
+            app_state.platform.restart_visualizer()
+            return jsonify(success=True, restart_required=True, message="LCD type changed. Restarting visualizer...")
+        else:
+            return jsonify(success=False, error="Invalid display type")
+
+    if setting_name == "led_pin":
+        # Validate the pin value
+        valid_pins = ['12', '13', '18', '19', '41', '45', '53']
+        pin_value = str(value)
+        if pin_value not in valid_pins:
+            return jsonify(success=False, error="Invalid LED pin. Valid pins are: " + ", ".join(valid_pins))
+        
+        # Auto-determine channel based on pin
+        # Channel 0: pins 12, 18
+        # Channel 1: pins 13, 19, 41, 45, 53
+        pin_int = int(pin_value)
+        if pin_int in [12, 18]:
+            channel_value = 0
+        elif pin_int in [13, 19, 41, 45, 53]:
+            channel_value = 1
+        else:
+            return jsonify(success=False, error="Invalid LED pin")
+        
+        # Save both pin and channel settings
+        app_state.usersettings.change_setting_value("led_pin", pin_value)
+        app_state.usersettings.change_setting_value("led_channel", channel_value)
+        
+        # Restart visualizer to apply the LED pin change
+        app_state.platform.restart_visualizer()
+        return jsonify(success=True, restart_required=True, message="LED pin changed. Restarting visualizer...")
+
     if setting_name == "reset_to_default":
         app_state.usersettings.reset_to_default()
 
@@ -1173,7 +1212,17 @@ def change_setting():
         app_state.learning.start_point = value
         app_state.learning.start_point = clamp(app_state.learning.start_point, 0,
                                                   app_state.learning.end_point - 1)
-        app_state.usersettings.change_setting_value("start_point", app_state.learning.start_point)
+        # Update start point for current song
+        try:
+            profile_id = getattr(app_state, 'current_profile_id', None)
+            # Only update if a profile is selected and we know the song name
+            if profile_id and hasattr(app_state.learning, 'current_song_name') and app_state.learning.current_song_name:
+                # Use ProfileManager directly if available
+                pm = getattr(app_state, 'profile_manager', None)
+                if pm:
+                    updated = pm.update_learning_section(int(profile_id), app_state.learning.current_song_name, app_state.learning.start_point, app_state.learning.end_point)
+        except Exception as e:
+            logger.warning(f"Failed to update learning section: {e}")
         app_state.learning.restart_learning()
 
         return jsonify(success=True)
@@ -1183,7 +1232,17 @@ def change_setting():
         app_state.learning.end_point = value
         app_state.learning.end_point = clamp(app_state.learning.end_point, app_state.learning.start_point + 1,
                                                 100)
-        app_state.usersettings.change_setting_value("end_point", app_state.learning.end_point)
+        # Update start point for current song
+        try:
+            profile_id = getattr(app_state, 'current_profile_id', None)
+            # Only update if a profile is selected and we know the song name
+            if profile_id and hasattr(app_state.learning, 'current_song_name') and app_state.learning.current_song_name:
+                # Use ProfileManager directly if available
+                pm = getattr(app_state, 'profile_manager', None)
+                if pm:
+                    updated = pm.update_learning_section(int(profile_id), app_state.learning.current_song_name, app_state.learning.start_point, app_state.learning.end_point)
+        except Exception as e:
+            logger.warning(f"Failed to update learning section: {e}")
         app_state.learning.restart_learning()
 
         return jsonify(success=True)
@@ -1193,7 +1252,17 @@ def change_setting():
             float(app_state.learning.current_idx * 100 / float(len(app_state.learning.song_tracks))), 3)
         app_state.learning.start_point = clamp(app_state.learning.start_point, 0,
                                                   app_state.learning.end_point - 1)
-        app_state.usersettings.change_setting_value("start_point", app_state.learning.start_point)
+        # Update start point for current song
+        try:
+            profile_id = getattr(app_state, 'current_profile_id', None)
+            # Only update if a profile is selected and we know the song name
+            if profile_id and hasattr(app_state.learning, 'current_song_name') and app_state.learning.current_song_name:
+                # Use ProfileManager directly if available
+                pm = getattr(app_state, 'profile_manager', None)
+                if pm:
+                    updated = pm.update_learning_section(int(profile_id), app_state.learning.current_song_name, app_state.learning.start_point, app_state.learning.end_point)
+        except Exception as e:
+            logger.warning(f"Failed to update learning section: {e}")
         app_state.learning.restart_learning()
 
         return jsonify(success=True, reload_learning_settings=True)
@@ -1203,7 +1272,17 @@ def change_setting():
             float(app_state.learning.current_idx * 100 / float(len(app_state.learning.song_tracks))), 3)
         app_state.learning.end_point = clamp(app_state.learning.end_point, app_state.learning.start_point + 1,
                                                 100)
-        app_state.usersettings.change_setting_value("end_point", app_state.learning.end_point)
+        # Update start point for current song
+        try:
+            profile_id = getattr(app_state, 'current_profile_id', None)
+            # Only update if a profile is selected and we know the song name
+            if profile_id and hasattr(app_state.learning, 'current_song_name') and app_state.learning.current_song_name:
+                # Use ProfileManager directly if available
+                pm = getattr(app_state, 'profile_manager', None)
+                if pm:
+                    updated = pm.update_learning_section(int(profile_id), app_state.learning.current_song_name, app_state.learning.start_point, app_state.learning.end_point)
+        except Exception as e:
+            logger.warning(f"Failed to update learning section: {e}")
         app_state.learning.restart_learning()
 
         return jsonify(success=True, reload_learning_settings=True)
@@ -1303,6 +1382,33 @@ def change_setting():
         if app_state.menu.led_animation_delay < 0:
             app_state.menu.led_animation_delay = 0
         app_state.usersettings.change_setting_value("led_animation_delay", app_state.menu.led_animation_delay)
+        return jsonify(success=True)
+
+    if setting_name == "idle_timeout_minutes":
+        value = max(int(value), 1)
+        app_state.menu.idle_timeout_minutes = value
+        app_state.usersettings.change_setting_value("idle_timeout_minutes", app_state.menu.idle_timeout_minutes)
+        # Reload state manager config
+        if app_state.state_manager:
+            app_state.state_manager.reload_config()
+        return jsonify(success=True)
+
+    if setting_name == "screensaver_delay":
+        value = max(int(value), 0)
+        app_state.menu.screensaver_delay = value
+        app_state.usersettings.change_setting_value("screensaver_delay", app_state.menu.screensaver_delay)
+        # Reload state manager config
+        if app_state.state_manager:
+            app_state.state_manager.reload_config()
+        return jsonify(success=True)
+
+    if setting_name == "screen_off_delay":
+        value = max(int(value), 0)
+        app_state.menu.screen_off_delay = value
+        app_state.usersettings.change_setting_value("screen_off_delay", app_state.menu.screen_off_delay)
+        # Reload state manager config
+        if app_state.state_manager:
+            app_state.state_manager.reload_config()
 
         return jsonify(success=True)
 
@@ -1422,7 +1528,10 @@ def get_sequence_setting():
 def get_idle_animation_settings():
     response = {"led_animation_delay": app_state.usersettings.get_setting_value("led_animation_delay"),
                 "led_animation": app_state.usersettings.get_setting_value("led_animation"),
-                "led_animation_brightness_percent": app_state.ledsettings.led_animation_brightness_percent}
+                "led_animation_brightness_percent": app_state.ledsettings.led_animation_brightness_percent,
+                "idle_timeout_minutes": app_state.usersettings.get_setting_value("idle_timeout_minutes"),
+                "screensaver_delay": app_state.usersettings.get_setting_value("screensaver_delay"),
+                "screen_off_delay": app_state.usersettings.get_setting_value("screen_off_delay")}
     return jsonify(response)
 
 @webinterface.route('/api/get_settings', methods=['GET'])
@@ -1547,12 +1656,25 @@ def get_recording_status():
 
 @webinterface.route('/api/get_learning_status', methods=['GET'])
 def get_learning_status():
+    # Update start point for current song from DB in case we changed the song
+    try:
+        profile_id = getattr(app_state, 'current_profile_id', None)
+        # Only update if a profile is selected and we know the song name
+        if profile_id and hasattr(app_state.learning, 'current_song_name') and app_state.learning.current_song_name:
+            # Use ProfileManager directly if available
+            pm = getattr(app_state, 'profile_manager', None)
+            if pm:
+                section_list = pm.get_learning_section(int(profile_id), app_state.learning.current_song_name)
+                app_state.learning.start_point = section_list["start"]
+                app_state.learning.end_point = section_list["end"]
+    except Exception as e:
+        logger.warning(f"Failed to update learning section: {e}")
     response = {"loading": app_state.learning.loading,
                 "practice": app_state.usersettings.get_setting_value("practice"),
                 "hands": app_state.usersettings.get_setting_value("hands"),
                 "mute_hand": app_state.usersettings.get_setting_value("mute_hand"),
-                "start_point": app_state.usersettings.get_setting_value("start_point"),
-                "end_point": app_state.usersettings.get_setting_value("end_point"),
+                "start_point": app_state.learning.start_point,
+                "end_point": app_state.learning.end_point,
                 "set_tempo": app_state.usersettings.get_setting_value("set_tempo"),
                 "hand_colorR": app_state.usersettings.get_setting_value("hand_colorR"),
                 "hand_colorL": app_state.usersettings.get_setting_value("hand_colorL"),
@@ -2043,7 +2165,6 @@ def delete_port_connection():
 
 def pretty_print(dom):
     return '\n'.join([line for line in dom.toprettyxml(indent=' ' * 4).split('\n') if line.strip()])
-
 
 def pretty_save(file_path, sequences_tree):
     with open(file_path, "w", encoding="utf8") as outfile:
